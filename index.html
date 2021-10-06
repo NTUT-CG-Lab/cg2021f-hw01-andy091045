@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>three.js webgl - loader - ttf</title>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0"
+    />
+    <link type="text/css" rel="stylesheet" href="main.css" />
+  </head>
+  <body>
+    <div id="info"></div>
+
+    <script src="./opentype.min.js"></script>
+    <script src="./three.min.js"></script>
+    <script src="./TTFLoader.js"></script>
+    <script src="scoreoutputer.min.js"></script>
+
+    <script>
+      //-------自我評分表
+      var so = new ScoreOutputer("110598066");
+      so.installCSS(function () {
+        // 安裝 bootstrap 的 css，如果在 html 上方引用 bootstrap 5.1.1 的話就不用使用 installCSS ，注意一定要 bootstrap css 5.1.1 版
+        // installCSS 接收一個 callback 當作參數，作為成功安裝 bootstrap css 的回呼函式
+
+        //加入項目，分數，完成狀況
+        //第一個參數為 項目名稱
+        //第2個參數為 項目分數
+        //第3個參數為 完成狀況，有完成 true/未完成 false
+        //有幾個項目就呼叫幾個 addChild
+        //addChild 要比 renderModal 先呼叫
+        so.addChild("創建場景地面", 2, true);
+        so.addChild("讀取字型檔", 2, true);
+        so.addChild("地支排圓圈", 2, true);
+        so.addChild("地支跳轉網頁", 1, true);
+        so.addChild("顯示圖學作業", 1, true);
+        so.addChild("時鐘效果", 1, false);
+        so.addChild("ply格式模型", 1, false);
+
+        //產生自評表，參數如下所示
+        so.renderModal(
+          //1. 自評表插入位置 (預設 document.body)
+          document.body,
+          //2. 自評表背景 (預設紅色)
+          "rgba(100,45,65,1)",
+          //3. 自評表文字顏色 (預設白色)
+          "white",
+          //4. 自評表文字大小 (預設 14pt)
+          "15pt",
+          //5. 自評表 checkbox 文字大小 (預設多少忘了)
+          "15px",
+          //6. 自評表標題 (預設 "自我評分表")
+          (dialogTitle = "自我評分表 (助教測試用)")
+        );
+
+        //設定下載按鈕 <-- 一定要呼叫這個函數，不然沒有下載功能
+        so.installDownloadBtn();
+
+        //產生 "開啟自評表按鈕"
+        so.renderBtn(
+          //自評表按鈕插入位置
+          document.querySelector("#info"),
+          //自評表按鈕文字
+          "開啟自評表"
+        );
+      });
+      //----------------
+    </script>
+    <script>
+      let container;
+      let camera, cameraTarget, scene, renderer;
+      let group, textMesh1, textMesh2, textGeo, material, textmaterial;
+      let firstLetter = true;
+
+      var clockPoint = new Array(12);
+      var clockPointText = new Array(12);
+      var clockPointPosition = [
+        [0, 80],
+        [40, 65],
+        [65, 40],
+        [80, 0],
+        [65, -40],
+        [40, -65],
+        [0, -80],
+        [-40, -65],
+        [-65, -40],
+        [-80, 0],
+        [-65, 40],
+        [-40, 65],
+      ];
+
+      var Zodiac = [
+        "子",
+        "丑",
+        "寅",
+        "卯",
+        "辰",
+        "巳",
+        "午",
+        "未",
+        "申",
+        "酉",
+        "戌",
+        "亥",
+      ];
+      let text = "高等計算機圖學";
+      const height = 20,
+        size = 70,
+        hover = 30,
+        curveSegments = 4,
+        bevelThickness = 2,
+        bevelSize = 1.5;
+
+      let font = null;
+      const mirror = true;
+
+      let targetRotation = 0;
+      let targetRotationOnPointerDown = 0;
+
+      let pointerX = 0;
+      let pointerXOnPointerDown = 0;
+
+      let windowHalfX = window.innerWidth / 2;
+
+      //click text produce new window
+      let raycaster = new THREE.Raycaster();
+      let mouse = new THREE.Vector2();
+
+      let INTERSECTED;
+      let intersects;
+
+      init();
+      animate();
+
+      function init() {
+        container = document.createElement("div");
+        document.body.appendChild(container);
+
+        // CAMERA
+
+        camera = new THREE.PerspectiveCamera(
+          30,
+          window.innerWidth / window.innerHeight,
+          1,
+          1500
+        );
+        camera.position.set(0, 800, 1200);
+
+        cameraTarget = new THREE.Vector3(0, 150, 0);
+
+        // SCENE
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+        // scene.fog = new THREE.Fog(0x000000, 250, 1400);
+
+        // LIGHTS
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.125);
+        dirLight.position.set(0, 0, 1).normalize();
+        scene.add(dirLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 1.5);
+        pointLight.position.set(0, 100, 90);
+        pointLight.color.setHSL(Math.random(), 1, 0.5);
+        scene.add(pointLight);
+
+        textmaterial = new THREE.MeshBasicMaterial({
+          color: 0xfffacd,
+        });
+
+        material = new THREE.MeshPhongMaterial({
+          color: 0xffffff,
+          flatShading: true,
+        });
+
+        group = new THREE.Group();
+        group.position.y = 100;
+        group.position.z = 300;
+
+        scene.add(group);
+
+        clockGroup = new THREE.Group();
+        clockGroup.position.y = 500;
+        clockGroup.position.z = 500;
+
+        scene.add(clockGroup);
+
+        const loader = new THREE.TTFLoader();
+
+        loader.load("./edusong-big5.ttf", function (json) {
+          console.log(json);
+          font = new THREE.Font(json);
+          createText();
+          for (var i = 0; i < 12; i++) {
+            createClockText(i);
+          }
+        });
+
+        const clock = new THREE.Mesh(
+          new THREE.CircleGeometry(100, 100),
+          new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            opacity: 0.5,
+            transparent: true,
+          })
+        );
+        // clock.position.y = 500;
+        // clock.position.z = 650;
+        clockGroup.add(clock);
+
+        for (var i = 0; i < 12; i++) {
+          clockPoint[i] = new THREE.Mesh(
+            new THREE.CircleGeometry(12, 12),
+            new THREE.MeshBasicMaterial({
+              color: 0xe6005c,
+              opacity: 0.5,
+              transparent: false,
+            })
+          );
+          clockGroup.add(clockPoint[i]);
+          console.log(clockPointPosition[0][1]);
+          clockPoint[i].position.x = clockPointPosition[i][0];
+          clockPoint[i].position.y = clockPointPosition[i][1];
+        }
+
+        // const TestBox = new THREE.Mesh(
+        //   new THREE.PlaneGeometry(10, 10),
+        //   new THREE.MeshBasicMaterial({
+        //     color: 0x00ffff,
+        //     opacity: 0.5,
+        //     transparent: false,
+        //   })
+        // );
+        // TestBox.position.y = 500;
+        // TestBox.position.z = 650;
+        // var axis = new THREE.Vector3(0, 1, 1);
+        // scene.add(TestBox);
+        // TestBox.translate(axis, Math.PI / 6);
+
+        const plane = new THREE.Mesh(
+          new THREE.PlaneGeometry(1000, 1000),
+          new THREE.MeshBasicMaterial({
+            color: 0xe6505c,
+            opacity: 0.5,
+            transparent: false,
+          })
+        );
+        plane.position.y = 100;
+        plane.rotation.x = -Math.PI / 2;
+        scene.add(plane);
+
+        // RENDERER
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        // EVENTS
+
+        // container.style.touchAction = "none";
+        // container.addEventListener("pointerdown", onPointerDown);
+
+        // document.addEventListener("keypress", onDocumentKeyPress);
+        // document.addEventListener("keydown", onDocumentKeyDown);
+
+        window.addEventListener("resize", onWindowResize);
+      }
+      function onMouseClick(event) {
+        // calculate mouse position in normalized device coordinates
+        // (-1 to +1) for both components
+        console.log("here");
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        intersects = raycaster.intersectObjects(scene.children, false);
+
+        if (intersects.length > 0) {
+          if (INTERSECTED != intersects[0].object) {
+            for (var i = 0; i < intersects.length; i++) {
+              if (intersects[i].object == clockPointText[0]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw01-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[1]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw02-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[2]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw03-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[3]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw04-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[4]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw05-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[5]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw06-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[6]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw07-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[7]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw08-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[8]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw09-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[9]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw10-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[10]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw11-andy091045/"
+                );
+              } else if (intersects[i].object == clockPointText[11]) {
+                window.open(
+                  "https://ntut-cg-lab.github.io/cg2021f-hw12-andy091045/"
+                );
+              }
+            }
+          }
+        } else {
+          INTERSECTED = null;
+        }
+      }
+
+      window.addEventListener("click", onMouseClick, true);
+      function onWindowResize() {
+        windowHalfX = window.innerWidth / 2;
+
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      function onDocumentKeyDown(event) {
+        if (firstLetter) {
+          firstLetter = false;
+          text = "";
+        }
+
+        const keyCode = event.keyCode;
+
+        // backspace
+
+        if (keyCode === 8) {
+          event.preventDefault();
+
+          text = text.substring(0, text.length - 1);
+          refreshText();
+
+          return false;
+        }
+      }
+
+      function onDocumentKeyPress(event) {
+        const keyCode = event.which;
+
+        // backspace
+
+        if (keyCode === 8) {
+          event.preventDefault();
+        } else {
+          const ch = String.fromCharCode(keyCode);
+          text += ch;
+
+          refreshText();
+        }
+      }
+
+      function createText() {
+        textGeo = new THREE.TextGeometry(text, {
+          font: font,
+
+          size: size,
+          height: height,
+          curveSegments: curveSegments,
+
+          bevelThickness: bevelThickness,
+          bevelSize: bevelSize,
+          bevelEnabled: true,
+        });
+
+        textGeo.computeBoundingBox();
+        textGeo.computeVertexNormals();
+
+        const centerOffset =
+          -0.5 * (textGeo.boundingBox.max.x - textGeo.boundingBox.min.x);
+
+        textMesh1 = new THREE.Mesh(textGeo, material);
+
+        textMesh1.position.x = centerOffset;
+        textMesh1.position.y = hover;
+        // textMesh1.position.z = 100;
+
+        textMesh1.rotation.x = Math.PI * -0.5;
+        // textMesh1.rotation.y = Math.PI * 2;
+
+        group.add(textMesh1);
+
+        //     if (mirror) {
+        //       //   textMesh2 = new THREE.Mesh(textGeo, material);
+        //       //   textMesh2.position.x = centerOffset;
+        //       //   textMesh2.position.y = -hover;
+        //       //   textMesh2.position.z = height;
+        //       //   textMesh2.rotation.x = Math.PI;
+        //       //   textMesh2.rotation.y = Math.PI * 2;
+        //       //   group.add(textMesh2);
+        //     }
+      }
+
+      function createClockText(i) {
+        textGeo = new THREE.TextGeometry(Zodiac[i], {
+          font: font,
+          size: 10,
+          height: 5,
+          curveSegments: curveSegments,
+          bevelThickness: 0.5,
+          bevelSize: 0.3,
+          bevelEnabled: true,
+        });
+
+        // textGeo.computeBoundingBox();
+        // textGeo.computeVertexNormals();
+
+        // const centerOffset =
+        //   -0.5 * (textGeo.boundingBox.max.x - textGeo.boundingBox.min.x);
+
+        clockPointText[i] = new THREE.Mesh(textGeo, textmaterial);
+
+        clockPointText[i].position.x = clockPointPosition[i][0] - 7;
+        clockPointText[i].position.y = clockPointPosition[i][1] + 500;
+        clockPointText[i].position.z = 505;
+        // textMesh1.position.z = 100;
+        // textMesh1.rotation.x = Math.PI * -0.5;
+        // textMesh1.rotation.y = Math.PI * 2;
+
+        scene.add(clockPointText[i]);
+      }
+
+      //   function refreshText() {
+      //     group.remove(textMesh1);
+      //     if (mirror) group.remove(textMesh2);
+
+      //     if (!text) return;
+
+      //     createText();
+      //   }
+
+      //   function onPointerDown(event) {
+      //     if (event.isPrimary === false) return;
+
+      //     pointerXOnPointerDown = event.clientX - windowHalfX;
+      //     targetRotationOnPointerDown = targetRotation;
+
+      //     document.addEventListener("pointermove", onPointerMove);
+      //     document.addEventListener("pointerup", onPointerUp);
+      //   }
+
+      //   function onPointerMove(event) {
+      //     if (event.isPrimary === false) return;
+
+      //     pointerX = event.clientX - windowHalfX;
+
+      //     targetRotation =
+      //       targetRotationOnPointerDown +
+      //       (pointerX - pointerXOnPointerDown) * 0.02;
+      //   }
+
+      //   function onPointerUp() {
+      //     if (event.isPrimary === false) return;
+
+      //     document.removeEventListener("pointermove", onPointerMove);
+      //     document.removeEventListener("pointerup", onPointerUp);
+      //   }
+
+      //
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        // group.rotation.y += (targetRotation - group.rotation.y) * 0.05;
+
+        camera.lookAt(cameraTarget);
+
+        renderer.render(scene, camera);
+      }
+    </script>
+  </body>
+</html>
