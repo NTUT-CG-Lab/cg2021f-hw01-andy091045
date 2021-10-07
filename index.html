@@ -35,7 +35,7 @@
         so.addChild("地支排圓圈", 2, true);
         so.addChild("地支跳轉網頁", 1, true);
         so.addChild("顯示圖學作業", 1, true);
-        so.addChild("時鐘效果", 1, false);
+        so.addChild("時鐘效果", 1, true);
         so.addChild("ply格式模型", 1, false);
 
         //產生自評表，參數如下所示
@@ -129,6 +129,9 @@
 
       let INTERSECTED;
       let intersects;
+      let secLine;
+      let minLine;
+      let hourLine;
 
       init();
       animate();
@@ -251,6 +254,48 @@
         plane.rotation.x = -Math.PI / 2;
         scene.add(plane);
 
+        //clockLine
+        const lineMaterial = new THREE.LineBasicMaterial({
+          color: 0xffffff,
+        });
+        //sec
+        const secPoints = [];
+        secPoints.push(new THREE.Vector3(0, 0, 0));
+        secPoints.push(new THREE.Vector3(0, 100, 0));
+
+        const secGeometry = new THREE.BufferGeometry().setFromPoints(secPoints);
+
+        secLine = new THREE.Line(secGeometry, lineMaterial);
+        secLine.position.y = 285;
+        secLine.position.Z = 500;
+        scene.add(secLine);
+
+        //min
+        const minPoints = [];
+        minPoints.push(new THREE.Vector3(0, 0, 0));
+        minPoints.push(new THREE.Vector3(0, 80, 0));
+
+        const minGeometry = new THREE.BufferGeometry().setFromPoints(minPoints);
+
+        minLine = new THREE.Line(minGeometry, lineMaterial);
+        minLine.position.y = 285;
+        minLine.position.Z = 500;
+        scene.add(minLine);
+
+        //hour
+        const hourPoints = [];
+        hourPoints.push(new THREE.Vector3(0, 0, 0));
+        hourPoints.push(new THREE.Vector3(0, 60, 0));
+
+        const hourGeometry = new THREE.BufferGeometry().setFromPoints(
+          hourPoints
+        );
+
+        hourLine = new THREE.Line(hourGeometry, lineMaterial);
+        hourLine.position.y = 285;
+        hourLine.position.Z = 500;
+        scene.add(hourLine);
+
         // RENDERER
 
         renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -268,6 +313,7 @@
 
         window.addEventListener("resize", onWindowResize);
       }
+
       function onMouseClick(event) {
         // calculate mouse position in normalized device coordinates
         // (-1 to +1) for both components
@@ -452,6 +498,21 @@
         scene.add(clockPointText[i]);
       }
 
+      function clockUpdate() {
+        var date = new Date();
+        var hours = date.getHours();
+        var minutes = date.getMinutes();
+        var seconds = date.getSeconds();
+        var milliseconds = date.getMilliseconds();
+        var smoothSeconds = seconds + milliseconds / 1000;
+        minutes = minutes + smoothSeconds / 60;
+
+        hourLine.rotation.z = -THREE.Math.degToRad(
+          0.5 * (60 * hours + minutes)
+        );
+        minLine.rotation.z = -THREE.Math.degToRad(6 * minutes);
+        secLine.rotation.z = -THREE.Math.degToRad(6 * smoothSeconds);
+      }
       //   function refreshText() {
       //     group.remove(textMesh1);
       //     if (mirror) group.remove(textMesh2);
@@ -492,11 +553,9 @@
 
       function animate() {
         requestAnimationFrame(animate);
-
         // group.rotation.y += (targetRotation - group.rotation.y) * 0.05;
-
+        clockUpdate();
         camera.lookAt(cameraTarget);
-
         renderer.render(scene, camera);
       }
     </script>
